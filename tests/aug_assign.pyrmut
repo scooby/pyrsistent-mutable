@@ -1,0 +1,8 @@
+def plus(left, right):
+    left += right
+    return left
+
+
+def union(left, right):
+    left |= right
+    return left

@@ -3,6 +3,7 @@ from ast import (
     Store, Str, Subscript, Tuple, alias, copy_location, iter_fields, fix_missing_locations
 )
 from collections import defaultdict
+from copy import deepcopy
 
 
 def rewrite(module):
@@ -24,10 +25,21 @@ def match_ast(pattern, node):
     if not isinstance(node, type(pattern)):
         return None
 
+    if isinstance(pattern, list):
+        if len(pattern) != len(node):
+            return None
+        result = {}
+        for pelem, nelem in zip(pattern, node):
+            found = match_ast(pelem, nelem)
+            if found is None:
+                return None
+            result.update(found)
+        return result
+
     result = {}
     for field, expect in iter_fields(pattern):
-        actual = getattr(node, field, None)
-        found = match_ast(expect, actual)
+        found = getattr(node, field, None)
+        found = match_ast(expect, found)
         if found is None:
             return None
         result.update(found)
@@ -108,18 +120,38 @@ class Names:
 class _NodeTransformer(NodeTransformer):
     @classmethod
     def go(cls, node):
+        node = deepcopy(node)
         cls().visit(node)
         return node
 
 
-class Loadify(_NodeTransformer):
+class Context(NodeTransformer):
+    def __init__(self, ctx):
+        self._ctx = ctx
+
+    @classmethod
+    def set(cls, ctx, node):
+        node = deepcopy(node)
+        cls(ctx).visit(node)
+        return node
+
+    def visit_AugLoad(self, _):
+        return self._ctx()
+
+    def visit_AugStore(self, _):
+        return self._ctx()
+
+    def visit_Del(self, _):
+        return self._ctx()
+
     def visit_Store(self, _):
-        return Load()
+        return self._ctx()
 
-
-class Storify(_NodeTransformer):
     def visit_Load(self, _):
-        return Store()
+        return self._ctx()
+
+    def visit_Param(self, _):
+        return self._ctx()
 
 
 class Deslicify(_NodeTransformer):
@@ -158,9 +190,9 @@ class RewriteAssignments(NodeTransformer):
 
     def visit_AugAssign(self, node):
         node = copy_location(Assign(
-            targets=[node.target],
+            targets=[Context.set(Store, node.target)],
             value=BinOp(
-                left=Loadify.go(node.target),
+                left=Context.set(Load, node.target),
                 op=node.op,
                 right=node.value
             )
@@ -169,10 +201,10 @@ class RewriteAssignments(NodeTransformer):
 
     def visit_Assign(self, node):
         def set_attr(lhs, attr, rhs):
-            return self.call_global('set_via_attr', [Loadify.go(lhs), Str(s=attr), rhs])
+            return self.call_global('set_via_attr', [Context.set(Load, lhs), Str(s=attr), rhs])
 
         def set_sub(lhs, sub, rhs):
-            return self.call_global('set_via_slice', [Loadify.go(lhs), Deslicify.go(sub), rhs])
+            return self.call_global('set_via_slice', [Context.set(Load, lhs), Deslicify.go(sub), rhs])
 
         def destructure(lhs, rhs):
             if isinstance(lhs, Attribute):
@@ -213,7 +245,7 @@ class RewriteAssignments(NodeTransformer):
             out.append(copy_location(Assign(targets=[Name(id=rename, ctx=Store())], value=subject), node))
             subject = copy_location(Name(id=rename, ctx=Load()), subject)
         args = [subject, Str(s=d['method'])] + d['arguments']
-        assign = Assign(targets=[Storify.go(subject)],
+        assign = Assign(targets=[Context.set(Store, subject)],
                         value=self.call_global('invoke', args, d['keywords']))
         out.append(copy_location(assign, node))
         return out
@@ -228,8 +260,8 @@ class RewriteAssignments(NodeTransformer):
                 del unchanged[:]
 
         def change(func, subject, tail, target):
-            value = self.call_global(func, [Loadify.go(subject), tail], src=target)
-            stmt = copy_location(Assign(targets=[Storify.go(subject)], value=value), target)
+            value = self.call_global(func, [Context.set(Load, subject), tail], src=target)
+            stmt = copy_location(Assign(targets=[Context.set(Store, subject)], value=value), target)
             clear_unchanged()
             out.append(stmt)
 

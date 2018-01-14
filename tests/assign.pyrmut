@@ -1,0 +1,18 @@
+def simple_attr_assign(value):
+    value.foo = 10
+    return value
+
+
+def complex_attr_assign(value):
+    value.foo.bar.qux = 20
+    return value
+
+
+def simple_index_assign(value):
+    value['foo'] = 30
+    return value
+
+
+def complex_index_assign(value):
+    value.foo['bar']['qux'] = 40
+    return value

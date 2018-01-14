@@ -12,7 +12,7 @@ except ImportError:
 
 class HookLoader(SourceFileLoader):
     _debug_dump = False
-    _debug_rewritten = False
+    _debug_rewrite = False
 
     def source_to_code(self, data, path, *, _optimize=-1):
         module = ast.parse(data, filename=path)
@@ -21,8 +21,8 @@ class HookLoader(SourceFileLoader):
         if self._debug_dump:
             with open(path + '-dump', 'w') as fh:
                 Printer(file=fh).visit(module)
-        if self._debug_rewritten:
-            with open(path + '-rewritten', 'w') as fh:
+        if self._debug_rewrite:
+            with open(path + '-rewrite', 'w') as fh:
                 Unparser(module, file=fh)
         return super().source_to_code(module, path, _optimize=_optimize)
 
@@ -82,15 +82,15 @@ def add_meta_hook(modify_ast_func, *extensions):
     sys.meta_path.append(HookPathFinder(hook_loader, extensions))
 
 
-def set_debug(dump, rewritten):
+def set_debug(dump, rewrite):
     '''
-    Enable or disable (globally) the printing of an AST dump or the rewritten code.
+    Enable or disable (globally) the printing of an AST dump or the rewrite code.
     Requires that the module was installed as pyrsistent-import-hook[debug] or that astunparse
     is available.
     :param dump: print an AST dump.
-    :param rewritten: print the python code being compiled
-    :return dump, rewritten: the new values set; may be False if astunparse is unavailable.
+    :param rewrite: print the python code being compiled
+    :return dump, rewrite: the new values set; may be False if astunparse is unavailable.
     '''
     dump = HookLoader._debug_dump = dump and Printer is not None
-    rewritten = HookLoader._debug_rewritten = rewritten and Unparser is not None
-    return dump, rewritten
+    rewrite = HookLoader._debug_rewrite = rewrite and Unparser is not None
+    return dump, rewrite
