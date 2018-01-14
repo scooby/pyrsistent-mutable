@@ -1,0 +1,14 @@
+
+from pyrsistent_mutable.globals import set_via_attr as _set_via_attr, set_via_slice as _set_via_slice
+
+def simple_attr_assign(value):
+    value = _set_via_attr(value, 'foo', 10)
+    return value
+
+def complex_attr_assign(value):
+    value = _set_via_attr(value, 'foo', _set_via_attr(value.foo, 'bar', _set_via_attr(value.foo.bar, 'qux', 20)))
+    return value
+
+def simple_index_assign(value):
+    value = _set_via_slice(value, 'foo', 30)
+    return value

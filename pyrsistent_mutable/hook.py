@@ -20,6 +20,7 @@ class HookLoader(SourceFileLoader):
         ast.fix_missing_locations(module)
         if self._debug_dump:
             with open(path + '-dump', 'w') as fh:
+                # fh.write(ast.dump(module, False, True))
                 Printer(file=fh).visit(module)
         if self._debug_rewrite:
             with open(path + '-rewrite', 'w') as fh:

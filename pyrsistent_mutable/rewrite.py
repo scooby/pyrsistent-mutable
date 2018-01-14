@@ -1,15 +1,82 @@
 from ast import (
-    Assign, Attribute, BinOp, Call, Delete, ImportFrom, Load, Name, NameConstant, NodeTransformer, NodeVisitor,
-    Store, Str, Subscript, Tuple, alias, copy_location, iter_fields, fix_missing_locations
+    AST, Assign, Attribute, BinOp, Call, Delete, ExtSlice, ImportFrom, Index, Load, Name, NameConstant, NodeTransformer,
+    NodeVisitor, Slice, Store, Str, Subscript, Tuple, alias, copy_location as cl, fix_missing_locations as fml,
+    iter_fields
 )
 from collections import defaultdict
 from copy import deepcopy
+
+from astunparse import dump
+from pyrsistent import plist
 
 
 def rewrite(module):
     with Names(module) as imports:
         RewriteAssignments(imports).visit(module)
-    return fix_missing_locations(module)
+    return fml(module)
+    # raise_missing_locations(module)
+    # flag_index_nodes(module)
+
+
+def scan(node, path=plist()):
+    if isinstance(node, list):
+        for elem in node:
+            yield from scan(elem, path)
+    elif isinstance(node, AST):
+        yield node, path
+        for name, value in iter_fields(node):
+            yield from scan(value, path.cons(node))
+    else:
+        yield node, path
+
+
+def expand(child, path):
+    # Find where we think we are...
+    npath = path.cons(child).reverse()  # Normal ordered.
+    show = '/'.join(part.__class__.__name__ for part in npath)
+    loc = {}
+    for ancestor in path:
+        # noinspection PyProtectedMember
+        for attr in ancestor._attributes:
+            if attr not in loc:
+                val = getattr(ancestor, attr, None)
+                if val:
+                    loc[attr] = val
+    return show, loc.get('lineno'), loc.get('col_offset')
+
+
+def check_missing_locations(node):
+    for child, path in scan(node):
+        if isinstance(child, AST):
+            # noinspection PyProtectedMember
+            if any(not hasattr(child, attr) for attr in child._attributes):
+                yield expand(child, path)
+
+
+def raise_missing_locations(node):
+    problems = list(check_missing_locations(node))
+    if problems:
+        formatted = ', '.join(f'{path} at {lineno}:{col_offset}' for path, lineno, col_offset in problems)
+        raise ValueError('Missing locations: ' + formatted)
+
+
+def flag_index_nodes(node):
+    issues = []
+    for child, path in scan(node):
+        if isinstance(child, Index):
+            issues.append(expand(child, path))
+    if issues:
+        formatted = ', '.join(f'{path} at {lineno}:{col_offset}' for path, lineno, col_offset in issues)
+        raise ValueError('Stray Index: ' + formatted)
+
+
+def ast_repr(node):
+    if isinstance(node, AST):
+        return dump(node)
+    elif isinstance(node, list):
+        return '[' + (', '.join(map(ast_repr, node))) + ']'
+    else:
+        return repr(node)
 
 
 def match_ast(pattern, node):
@@ -19,6 +86,8 @@ def match_ast(pattern, node):
     :param node: The node to match against.
     :return: A dictionary of placeholders with values seen, or None to indicate a failure.
     '''
+    # print(f'{ast_repr(pattern)}  --vs--  {ast_repr(node)}')
+
     if isinstance(pattern, set) and len(pattern) == 1:
         return {next(iter(pattern)): node}
 
@@ -117,14 +186,6 @@ class Names:
         self.module.body[0:0] = stmts
 
 
-class _NodeTransformer(NodeTransformer):
-    @classmethod
-    def go(cls, node):
-        node = deepcopy(node)
-        cls().visit(node)
-        return node
-
-
 class Context(NodeTransformer):
     def __init__(self, ctx):
         self._ctx = ctx
@@ -154,25 +215,32 @@ class Context(NodeTransformer):
         return self._ctx()
 
 
-class Deslicify(_NodeTransformer):
-    def visit_Index(self, node):
-        return self.generic_visit(node.value)
+_slice = Attribute(value=Name(id='__builtins__', ctx=Load()), attr='slice', ctx=Load())
 
-    def visit_ExtSlice(self, node):
-        elems = map(self.generic_visit, node.dims)
-        return Tuple(elts=list(elems), ctx=Load())
 
-    _slice = Attribute(value=Name(id='__builtins__', ctx=Load()), attr='slice', ctx=Load())
+def deslicify(subscript):
+    def fix_none(node):
+        if node is None:
+            return cl(NameConstant(None), subscript)
+        else:
+            return node
 
-    def visit_Slice(self, node):
-        def visit(what):
-            if what is None:
-                return NameConstant(None)
-            else:
-                return self.generic_visit(what)
+    def fix_slice(node):
+        if isinstance(node, Slice):
+            call = Call(func=_slice, args=[fix_none(node.lower), fix_none(node.upper), fix_none(node.step)], keywords=[])
+            return cl(call, node)
+        else:
+            return fix_none(node)
 
-        call = Call(func=self._slice, args=[visit(node.lower), visit(node.upper), visit(node.step)], keywords=[])
-        return copy_location(call, node)
+    if isinstance(subscript, Index):
+        return subscript.value
+    elif isinstance(subscript, ExtSlice):
+        elems = map(fix_slice, subscript.dims)
+        return cl(Tuple(elts=list(elems), ctx=Load()), subscript)
+    elif isinstance(subscript, Slice):
+        return cl(fix_slice(subscript), subscript)
+    else:
+        raise TypeError(f'Expected {dump(subscript)} to be a subscript expression.')
 
 
 class RewriteAssignments(NodeTransformer):
@@ -185,11 +253,11 @@ class RewriteAssignments(NodeTransformer):
             keywords = []
         call = Call(func=func, args=args, keywords=keywords)
         if src is not None:
-            copy_location(call, src)
+            cl(call, src)
         return call
 
     def visit_AugAssign(self, node):
-        node = copy_location(Assign(
+        node = cl(Assign(
             targets=[Context.set(Store, node.target)],
             value=BinOp(
                 left=Context.set(Load, node.target),
@@ -201,10 +269,11 @@ class RewriteAssignments(NodeTransformer):
 
     def visit_Assign(self, node):
         def set_attr(lhs, attr, rhs):
-            return self.call_global('set_via_attr', [Context.set(Load, lhs), Str(s=attr), rhs])
+            return self.call_global('set_via_attr', [Context.set(Load, lhs), Str(s=attr), rhs], src=node)
 
         def set_sub(lhs, sub, rhs):
-            return self.call_global('set_via_slice', [Context.set(Load, lhs), Deslicify.go(sub), rhs])
+            return self.call_global('set_via_slice', [Context.set(Load, lhs), deslicify(sub), rhs],
+                                    src=node)
 
         def destructure(lhs, rhs):
             if isinstance(lhs, Attribute):
@@ -217,9 +286,9 @@ class RewriteAssignments(NodeTransformer):
         out = []
         for target in node.targets:
             lhs, rhs = destructure(target, node.value)
-            copy_location(lhs, target)
-            copy_location(rhs, node.value)
-            assign = copy_location(Assign(targets=[lhs], value=rhs), node)
+            cl(lhs, target)
+            cl(rhs, node.value)
+            assign = cl(Assign(targets=[Context.set(Store, lhs)], value=rhs), node)
             out.append(assign)
         return out
 
@@ -242,12 +311,12 @@ class RewriteAssignments(NodeTransformer):
         if not isinstance(subject, Name):
             # For something more complex than a simple name, assign to a local to avoid side-effects
             rename = self.names.unique()
-            out.append(copy_location(Assign(targets=[Name(id=rename, ctx=Store())], value=subject), node))
-            subject = copy_location(Name(id=rename, ctx=Load()), subject)
+            out.append(cl(Assign(targets=[Name(id=rename, ctx=Store())], value=subject), node))
+            subject = cl(Name(id=rename, ctx=Load()), subject)
         args = [subject, Str(s=d['method'])] + d['arguments']
         assign = Assign(targets=[Context.set(Store, subject)],
                         value=self.call_global('invoke', args, d['keywords']))
-        out.append(copy_location(assign, node))
+        out.append(cl(assign, node))
         return out
 
     def visit_Delete(self, node):
@@ -256,12 +325,12 @@ class RewriteAssignments(NodeTransformer):
 
         def clear_unchanged():
             if unchanged:
-                out.append(copy_location(Delete(targets=unchanged), node))
+                out.append(cl(Delete(targets=unchanged), node))
                 del unchanged[:]
 
         def change(func, subject, tail, target):
             value = self.call_global(func, [Context.set(Load, subject), tail], src=target)
-            stmt = copy_location(Assign(targets=[Context.set(Store, subject)], value=value), target)
+            stmt = cl(Assign(targets=[Context.set(Store, subject)], value=value), target)
             clear_unchanged()
             out.append(stmt)
 
@@ -269,7 +338,7 @@ class RewriteAssignments(NodeTransformer):
             if isinstance(target, Attribute):
                 change('del_attr', target.value, Str(s=target.attr), target)
             elif isinstance(target, Subscript):
-                change('del_slice', target.value, Deslicify.go(target.slice), target)
+                change('del_slice', target.value, deslicify(target.slice), target)
             else:
                 unchanged.append(target)
 
