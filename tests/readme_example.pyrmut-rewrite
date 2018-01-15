@@ -1,0 +1,19 @@
+
+from pyrsistent_mutable.globals import del_slice as _del_slice, invoke as _invoke, set_via_attr as _set_via_attr, set_via_slice as _set_via_slice
+from pyrsistent import PRecord, field, pvector, pmap
+
+class Simple(PRecord):
+    attr = field()
+    other = field()
+
+def example_func():
+    my_precord = Simple(attr=Simple(attr=10, other=11), other=22)
+    my_vector = pvector([0, 10, 20, 30, 40, 50])
+    with_vector = Simple(attr=pvector([1, 2, 3]), other=33)
+    my_map = pmap({'other': 'value'})
+    value = 'banana'
+    my_precord = _set_via_attr(my_precord, 'attr', _set_via_attr(my_precord.attr, 'attr', 5))
+    my_vector = _del_slice(my_vector, 3)
+    with_vector = _set_via_attr(with_vector, 'attr', _invoke(with_vector.attr, 'append', 20))
+    my_map = _set_via_slice(my_map, 'apple', value)
+    return (my_precord, my_vector, with_vector, my_map)

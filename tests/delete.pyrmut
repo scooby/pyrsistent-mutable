@@ -1,0 +1,33 @@
+def regular_deletes_work():
+    a = 1
+    b = 2
+    del a, b
+    try:
+        a_val = a * 10
+    except NameError:
+        a_val = None
+    try:
+        b_val = b * 10
+    except NameError:
+        b_val = None
+    return a_val, b_val
+
+
+def delete_by_attr_simple(value):
+    a = 1
+    del value.foo, a
+    try:
+        a_val = a * 10
+    except NameError:
+        a_val = None
+    return value, a_val
+
+
+def delete_by_attr_complex(value):
+    del value.foo.bar
+    return value
+
+
+def delete_by_index(value):
+    del value.foo['bar']
+    return value

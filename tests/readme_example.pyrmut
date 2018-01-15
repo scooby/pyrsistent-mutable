@@ -1,0 +1,21 @@
+from pyrsistent import PRecord, field, pvector, pmap
+
+
+class Simple(PRecord):
+    attr = field()
+    other = field()
+
+
+def example_func():
+    my_precord = Simple(attr=Simple(attr=10, other=11), other=22)
+    my_vector = pvector([0, 10, 20, 30, 40, 50])
+    with_vector = Simple(attr=pvector([1, 2, 3]), other=33)
+    my_map = pmap({'other': 'value'})
+    value = 'banana'
+
+    my_precord.attr.attr = 5
+    del my_vector[3]
+    with_vector.attr.append(20)
+    my_map['apple'] = value
+
+    return my_precord, my_vector, with_vector, my_map

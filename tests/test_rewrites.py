@@ -1,5 +1,7 @@
+from pyrsistent import PRecord, field, pset, pvector
+
 import pyrsistent_mutable
-from pyrsistent import field, pvector, pset, PRecord
+
 pyrsistent_mutable.set_debug(True, True)
 
 
@@ -41,31 +43,62 @@ class MockClass3(PRecord):
 
 
 def test_simple_attr_assign():
-    import tests.assign as test_mod
+    from tests.assign import simple_attr_assign
 
     value = MockClass(foo=7, other=33)
-    actual = test_mod.simple_attr_assign(value)
+    actual = simple_attr_assign(value)
 
     assert actual == MockClass(foo=10, other=33)
 
 
 def test_complex_attr_assign():
-    import tests.assign as test_mod
+    from tests.assign import complex_attr_assign
 
     value = MockClass(foo=MockClass2(bar=MockClass3(qux=7, other=11), other=22), other=33)
-    actual = test_mod.complex_attr_assign(value)
+    actual = complex_attr_assign(value)
 
     assert actual == MockClass(foo=MockClass2(bar=MockClass3(qux=20, other=11), other=22), other=33)
 
 
-'''
-def simple_index_assign(value):
-    value['foo'] = 30
-    return value
+def test_simple_index_assign():
+    from tests.assign import simple_index_assign
+
+    value = MockClass(foo=7, other=33)
+    actual = simple_index_assign(value)
+
+    assert actual == MockClass(foo=30, other=33)
 
 
-def complex_index_assign(value):
-    value.foo['bar']['qux'] = 40
-    return value
+def test_complex_index_assign():
+    from tests.assign import complex_index_assign
 
-'''
+    value = MockClass(foo=MockClass2(bar=MockClass3(qux=7, other=11), other=22), other=33)
+    actual = complex_index_assign(value)
+
+    assert actual == MockClass(foo=MockClass2(bar=MockClass3(qux=40, other=11), other=22), other=33)
+
+
+def test_simple_method():
+    from tests.method import simple_invoke
+
+    value = pvector([1, 2, 3])
+    actual = simple_invoke(value)
+
+    assert actual == pvector([1, 2, 3, 20])
+
+
+def test_complex_method():
+    from tests.method import complex_invoke
+
+    value = MockClass(foo=pvector([1, 2, 3]), other=44)
+    actual = complex_invoke(value)
+
+    assert actual == MockClass(foo=pvector([1, 2, 3, 20, 30, 40]), other=44)
+
+
+def test_deletes_ignore_names():
+    from tests.delete import regular_deletes_work
+
+    actual = regular_deletes_work()
+
+    assert actual == (None, None)

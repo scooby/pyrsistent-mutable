@@ -1,0 +1,34 @@
+
+from pyrsistent_mutable.globals import del_attr as _del_attr, del_slice as _del_slice, set_via_attr as _set_via_attr
+
+def regular_deletes_work():
+    a = 1
+    b = 2
+    del a, b
+    try:
+        a_val = (a * 10)
+    except NameError:
+        a_val = None
+    try:
+        b_val = (b * 10)
+    except NameError:
+        b_val = None
+    return (a_val, b_val)
+
+def delete_by_attr_simple(value):
+    a = 1
+    value = _del_attr(value, 'foo')
+    del a
+    try:
+        a_val = (a * 10)
+    except NameError:
+        a_val = None
+    return (value, a_val)
+
+def delete_by_attr_complex(value):
+    value = _set_via_attr(value, 'foo', _del_attr(value.foo, 'bar'))
+    return value
+
+def delete_by_index(value):
+    value = _set_via_attr(value, 'foo', _del_slice(value.foo, 'bar'))
+    return value

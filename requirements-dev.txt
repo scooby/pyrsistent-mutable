@@ -1,0 +1,3 @@
+pyrsistent  # base requirement
+astunparse  # debugging requirement
+pytest      # testing

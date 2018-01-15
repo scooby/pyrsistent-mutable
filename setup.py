@@ -5,7 +5,7 @@ setup(
     version='0.0.1',
     author='Ben Samuel',
     packages=['pyrsistent_mutable'],
-    description='Module to update pysistent values with imperative syntax via an import hook.',
+    description='Import hook to update pysistent values with imperative syntax.',
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Developers',
@@ -15,14 +15,11 @@ setup(
         'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
-    ],
-    python_requires=['python>=3'],
+    ], python_requires=['python>=3'],
     install_requires=[
         'pyrsistent',
-    ],
-    license='MIT',
+    ], license='MIT',
     extras_require={
         'debug': ['astunparse'],
-    },
-    zip_safe=True
+    }, zip_safe=True
 )

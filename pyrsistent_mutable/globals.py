@@ -50,6 +50,7 @@ def set_via_slice(obj, index, value):
     except AttributeError:
         pass
     else:
+        evolver = evolver()
         evolver[index] = value
         return evolver.persistent()
     obj[index] = value
@@ -62,18 +63,20 @@ def del_attr(obj, attr):
     except AttributeError:
         pass
     else:
+        evolver = evolver()
         delattr(evolver, attr)
         return evolver.persistent()
     delattr(obj, attr)
     return obj
 
 
-def del_item(obj, index):
+def del_slice(obj, index):
     try:
         evolver = obj.evolver
     except AttributeError:
         pass
     else:
+        evolver = evolver()
         del evolver[index]
         return evolver.persistent()
     del obj[index]
