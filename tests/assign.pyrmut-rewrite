@@ -12,3 +12,7 @@ def complex_attr_assign(value):
 def simple_index_assign(value):
     value = _set_via_slice(value, 'foo', 30)
     return value
+
+def complex_index_assign(value):
+    value = _set_via_attr(value, 'foo', _set_via_slice(value.foo, 'bar', _set_via_slice(value.foo['bar'], 'qux', 40)))
+    return value

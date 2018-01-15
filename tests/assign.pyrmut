@@ -13,6 +13,6 @@ def simple_index_assign(value):
     return value
 
 
-# def complex_index_assign(value):
-#     value.foo['bar']['qux'] = 40
-#     return value
+def complex_index_assign(value):
+    value.foo['bar']['qux'] = 40
+    return value

@@ -59,11 +59,6 @@ def test_complex_attr_assign():
 
 
 '''
-def complex_attr_assign(value):
-    value.foo.bar.qux = 20
-    return value
-
-
 def simple_index_assign(value):
     value['foo'] = 30
     return value

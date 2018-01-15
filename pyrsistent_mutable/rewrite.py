@@ -105,15 +105,20 @@ def match_ast(pattern, node):
             result.update(found)
         return result
 
-    result = {}
-    for field, expect in iter_fields(pattern):
-        found = getattr(node, field, None)
-        found = match_ast(expect, found)
-        if found is None:
-            return None
-        result.update(found)
+    if isinstance(pattern, AST):
+        result = {}
+        for field, expect in iter_fields(pattern):
+            found = getattr(node, field, None)
+            found = match_ast(expect, found)
+            if found is None:
+                return None
+            result.update(found)
+        return result
 
-    return result
+    if pattern == node:
+        return {}
+    else:
+        return None
 
 
 class NamesInUse(NodeVisitor):
