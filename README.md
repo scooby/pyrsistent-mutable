@@ -69,3 +69,11 @@ You may need to `touch` the files to the import hook to rerun, but do this:
 
 If that didn't return `(True, True)`, double check that you've got `astunparse` installed. It's included if you install
 `pyrsistent-mutable[debug]`.
+
+## Package maintainer notes
+
+For my own notes:
+
+    pip install twine
+    python setup.py bdist_whee
+    twine upload dist/pyrsistent_mutable-0.0.1-py3-none-any.whl

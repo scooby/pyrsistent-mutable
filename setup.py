@@ -15,7 +15,7 @@ setup(
         'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
-    ], python_requires=['python>=3'],
+    ], python_requires='~=3.4',
     install_requires=[
         'pyrsistent',
     ], license='MIT',
