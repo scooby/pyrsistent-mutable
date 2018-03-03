@@ -92,6 +92,3 @@ def invoke(obj, method, *args, **kw):
         return result
     else:
         return obj
-
-
-

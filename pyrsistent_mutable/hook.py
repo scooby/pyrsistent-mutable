@@ -1,34 +1,30 @@
 import ast
+from contextlib import contextmanager
 from importlib.abc import MetaPathFinder
 from importlib.machinery import FileFinder, PathFinder, SourceFileLoader
 from os.path import isdir
 import sys
-
-try:
-    from astunparse import Unparser, Printer
-except ImportError:
-    Unparser = Printer = None
+from astunparse import Printer
 
 
 class HookLoader(SourceFileLoader):
-    _debug_dump = False
-    _debug_rewrite = False
+    _debug = False
 
     def source_to_code(self, data, path, *, _optimize=-1):
         module = ast.parse(data, filename=path)
         module = self.modify_ast(module)
         ast.fix_missing_locations(module)
-        if self._debug_dump:
-            with open(path + '-dump', 'w') as fh:
-                # fh.write(ast.dump(module, False, True))
+        if self._debug:
+            debug_path = path.with_name(path.stem + '-dump').with_suffix(path.suffix)
+            with open(debug_path, 'w') as fh:
                 Printer(file=fh).visit(module)
-        if self._debug_rewrite:
-            with open(path + '-rewrite', 'w') as fh:
-                Unparser(module, file=fh)
         return super().source_to_code(module, path, _optimize=_optimize)
 
     def modify_ast(self, module):
         raise NotImplementedError()
+
+    def set_debug(self):
+        self._debug = True
 
 
 class HookPathFinder(MetaPathFinder):
@@ -64,7 +60,7 @@ def subclass_hook_loader(modify_ast_func):
     return HookLoaderSub
 
 
-def add_path_hook(modify_ast_func, *extensions):
+def make_path_hook(modify_ast_func, *extensions):
     hook_loader = subclass_hook_loader(modify_ast_func)
 
     def path_hook(path):
@@ -72,26 +68,25 @@ def add_path_hook(modify_ast_func, *extensions):
         if path is not None and not isdir(path):
             raise ImportError('only directories are supported, got ' + str(path))
         return FileFinder(path, (hook_loader, *extensions))
+    return path_hook
 
+
+def make_meta_hook(modify_ast_func, *extensions):
+    hook_loader = subclass_hook_loader(modify_ast_func)
+    return HookPathFinder(hook_loader, extensions)
+
+
+def add_path_hook(path_hook):
     sys.path_hooks.insert(0, path_hook)
     PathFinder.invalidate_caches()
 
 
-def add_meta_hook(modify_ast_func, *extensions):
-    hook_loader = subclass_hook_loader(modify_ast_func)
-
-    sys.meta_path.append(HookPathFinder(hook_loader, extensions))
+def add_meta_hook(meta_hook):
+    sys.meta_path.append(meta_hook)
 
 
-def set_debug(dump, rewrite):
-    '''
-    Enable or disable (globally) the printing of an AST dump or the rewrite code.
-    Requires that the module was installed as pyrsistent-import-hook[debug] or that astunparse
-    is available.
-    :param dump: print an AST dump.
-    :param rewrite: print the python code being compiled
-    :return dump, rewrite: the new values set; may be False if astunparse is unavailable.
-    '''
-    dump = HookLoader._debug_dump = dump and Printer is not None
-    rewrite = HookLoader._debug_rewrite = rewrite and Unparser is not None
-    return dump, rewrite
+@contextmanager
+def meta_hook_before(hook):
+    sys.meta_path.insert(0, hook)
+    yield
+    sys.meta_path.remove(hook)

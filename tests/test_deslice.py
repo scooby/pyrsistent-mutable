@@ -1,6 +1,6 @@
 from ast import parse, Expr, Module, Num, Subscript, Name, Tuple, Call, Attribute, Load, NameConstant
 from pyrsistent_mutable.rewrite import deslicify, match_ast
-from astunparse import dump
+# from astunparse import dump
 
 pattern = Module(body=[Expr(value=Subscript(value=Name(id={'name'}), slice={'slice'}))])
 

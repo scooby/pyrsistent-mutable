@@ -1,11 +1,15 @@
 from setuptools import setup
 
+with open('README.md') as fh:
+    long_descr = fh.read()
+
 setup(
     name='pyrsistent-mutable',
-    version='0.0.1',
+    version='0.0.3',
     author='Ben Samuel',
     packages=['pyrsistent_mutable'],
-    description='Import hook to update pysistent values with imperative syntax.',
+    description='Decorator to create and update immutable values with imperative syntax.',
+    long_description=long_descr,
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Developers',
@@ -17,9 +21,9 @@ setup(
         'Programming Language :: Python :: 3.6',
     ], python_requires='~=3.4',
     install_requires=[
-        'pyrsistent',
+        'pyrsistent', 'astunparse'
     ], license='MIT',
     extras_require={
-        'debug': ['astunparse'],
-    }, zip_safe=True
+    }, zip_safe=True,
+    url='https://github.com/scooby/pyrsistent-mutable'
 )

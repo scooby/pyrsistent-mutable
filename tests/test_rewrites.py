@@ -1,12 +1,12 @@
 from pyrsistent import PRecord, field, pset, pvector
 
-import pyrsistent_mutable
-
-pyrsistent_mutable.set_debug(True, True)
+from tests import rewrite_hook
+from pyrsistent_mutable.hook import meta_hook_before
 
 
 def test_aug_assign_plus():
-    import tests.aug_assign as test_mod
+    with meta_hook_before(rewrite_hook):
+        import tests.aug_assign as test_mod
 
     left = pvector([1, 2, 3])
     right = pvector([10, 20, 30])
@@ -17,7 +17,8 @@ def test_aug_assign_plus():
 
 
 def test_aug_assign_union():
-    import tests.aug_assign as test_mod
+    with meta_hook_before(rewrite_hook):
+        import tests.aug_assign as test_mod
 
     left = pset([1, 2, 3])
     right = pset([3, 2, 4])
@@ -43,7 +44,8 @@ class MockClass3(PRecord):
 
 
 def test_simple_attr_assign():
-    from tests.assign import simple_attr_assign
+    with meta_hook_before(rewrite_hook):
+        from tests.assign import simple_attr_assign
 
     value = MockClass(foo=7, other=33)
     actual = simple_attr_assign(value)
@@ -52,7 +54,8 @@ def test_simple_attr_assign():
 
 
 def test_complex_attr_assign():
-    from tests.assign import complex_attr_assign
+    with meta_hook_before(rewrite_hook):
+        from tests.assign import complex_attr_assign
 
     value = MockClass(foo=MockClass2(bar=MockClass3(qux=7, other=11), other=22), other=33)
     actual = complex_attr_assign(value)
@@ -61,7 +64,8 @@ def test_complex_attr_assign():
 
 
 def test_simple_index_assign():
-    from tests.assign import simple_index_assign
+    with meta_hook_before(rewrite_hook):
+        from tests.assign import simple_index_assign
 
     value = MockClass(foo=7, other=33)
     actual = simple_index_assign(value)
@@ -70,7 +74,8 @@ def test_simple_index_assign():
 
 
 def test_complex_index_assign():
-    from tests.assign import complex_index_assign
+    with meta_hook_before(rewrite_hook):
+        from tests.assign import complex_index_assign
 
     value = MockClass(foo=MockClass2(bar=MockClass3(qux=7, other=11), other=22), other=33)
     actual = complex_index_assign(value)
@@ -79,7 +84,8 @@ def test_complex_index_assign():
 
 
 def test_simple_method():
-    from tests.method import simple_invoke
+    with meta_hook_before(rewrite_hook):
+        from tests.method import simple_invoke
 
     value = pvector([1, 2, 3])
     actual = simple_invoke(value)
@@ -88,7 +94,8 @@ def test_simple_method():
 
 
 def test_complex_method():
-    from tests.method import complex_invoke
+    with meta_hook_before(rewrite_hook):
+        from tests.method import complex_invoke
 
     value = MockClass(foo=pvector([1, 2, 3]), other=44)
     actual = complex_invoke(value)
@@ -97,7 +104,8 @@ def test_complex_method():
 
 
 def test_deletes_ignore_names():
-    from tests.delete import regular_deletes_work
+    with meta_hook_before(rewrite_hook):
+        from tests.delete import regular_deletes_work
 
     actual = regular_deletes_work()
 

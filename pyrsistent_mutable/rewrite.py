@@ -1,12 +1,15 @@
 from ast import (
-    AST, Assign, Attribute, BinOp, Call, Delete, Expr, ExtSlice, ImportFrom, Index, Load, Name, NameConstant,
+    AST, Assign, Attribute, BinOp, Call, Delete, Dict, DictComp, Expr, ExtSlice, ImportFrom, Index, Load, Name, NameConstant,
     NodeTransformer, NodeVisitor, Slice, Store, Str, Subscript, Tuple, alias, copy_location as cl, dump,
     fix_missing_locations as fml, iter_fields
 )
 from collections import defaultdict
 from copy import deepcopy
+from pvectorc import pvector
 
-from pyrsistent import plist
+from astunparse import Unparser
+from pyrsistent import plist, pmap, pset
+from pyrsistent_mutable import globals
 
 
 def rewrite(module):
@@ -34,7 +37,6 @@ def match_ast(pattern, node):
     :param node: The node to match against.
     :return: A dictionary of placeholders with values seen, or None to indicate a failure.
     '''
-    # print(f'{ast_repr(pattern)}  --vs--  {ast_repr(node)}')
 
     if isinstance(pattern, set) and len(pattern) == 1:
         return {next(iter(pattern)): node}
@@ -105,6 +107,8 @@ class Names:
         return self
 
     def dotted(self, *parts):
+        if len(parts) == 1 and callable(parts[0]):
+            parts = name_of(parts[0])
         if len(parts) < 2:
             raise TypeError('Expect at least two parts to a fully qualified name.')
         if parts in self.imports:
@@ -137,6 +141,21 @@ class Names:
             stmts.append(ImportFrom(module='.'.join(mod), names=aliases,
                                     lineno=1, col_offset=0, level=0))
         self.module.body[0:0] = stmts
+
+    def call_global(self, name, args, keywords=None, src=None):
+        func = Name(id=self.dotted(name), ctx=Load())
+        if keywords is None:
+            keywords = []
+        call = Call(func=func, args=args, keywords=keywords)
+        if src is not None:
+            cl(call, src)
+        return call
+
+
+def name_of(func):
+    parts = func.__module__.split('.')
+    parts.append(func.__name__)
+    return tuple(parts)
 
 
 class Context(NodeTransformer):
@@ -200,32 +219,27 @@ class RewriteAssignments(NodeTransformer):
     def __init__(self, names):
         self.names = names
 
-    def call_global(self, name, args, keywords=None, src=None):
-        func = Name(id=self.names.dotted('pyrsistent_mutable', 'globals', name), ctx=Load())
-        if keywords is None:
-            keywords = []
-        call = Call(func=func, args=args, keywords=keywords)
-        if src is not None:
-            cl(call, src)
-        return call
-
     def visit_AugAssign(self, node):
         node = cl(Assign(
             targets=[Context.set(Store, node.target)],
             value=BinOp(
                 left=Context.set(Load, node.target),
                 op=node.op,
-                right=node.value
+                right=self.generic_visit(node.value)
             )
         ), node)
         return self.visit_Assign(node)
 
     def visit_Assign(self, node):
         def set_attr(lhs, attr, rhs):
-            return self.call_global('set_via_attr', [Context.set(Load, lhs), Str(s=attr), rhs], src=node)
+            return self.names.call_global(globals.set_via_attr,
+                                          [Context.set(Load, lhs), Str(s=attr), rhs],
+                                          src=node)
 
         def set_sub(lhs, sub, rhs):
-            return self.call_global('set_via_slice', [Context.set(Load, lhs), deslicify(sub), rhs], src=node)
+            return self.names.call_global(globals.set_via_slice,
+                                          [Context.set(Load, lhs), deslicify(sub), rhs],
+                                          src=node)
 
         def destructure(lhs, rhs):
             if isinstance(lhs, Attribute):
@@ -236,10 +250,11 @@ class RewriteAssignments(NodeTransformer):
                 return lhs, rhs
 
         out = []
+        node_val = self.visit(node.value)
         for target in node.targets:
-            lhs, rhs = destructure(target, node.value)
+            lhs, rhs = destructure(target, node_val)
             cl(lhs, target)
-            cl(rhs, node.value)
+            cl(rhs, node_val)
             assign = cl(Assign(targets=[Context.set(Store, lhs)], value=rhs), node)
             out.append(assign)
         return out
@@ -255,13 +270,13 @@ class RewriteAssignments(NodeTransformer):
 
     def visit_Expr(self, node):
         # Rewrite foo.append(...) as foo = invoke(foo, 'append', ...)
-        d = match_ast(self._method_pattern, node.value)
-        if d is None:
-            return cl(Expr(value=self.generic_visit(node.value)), node)
-        subject = d['subject']
-        args = [subject, Str(s=d['method'])] + d['arguments']
+        match = match_ast(self._method_pattern, self.visit(node.value))
+        if match is None:
+            return cl(Expr(value=self.visit(node.value)), node)
+        subject = match['subject']
+        args = [subject, Str(s=match['method'])] + match['arguments']
         assign = Assign(targets=[Context.set(Store, subject)],
-                        value=self.call_global('invoke', args, d['keywords']))
+                        value=self.names.call_global(globals.invoke, args, match['keywords']))
         return self.visit_Assign(cl(assign, node))
 
     def visit_Delete(self, node):
@@ -277,17 +292,49 @@ class RewriteAssignments(NodeTransformer):
         def change(func, subject, tail, target):
             nonlocal out
             clear_unchanged()
-            value = self.call_global(func, [Context.set(Load, subject), tail], src=target)
+            value = self.names.call_global(func, [Context.set(Load, subject), tail], src=target)
             stmts = self.visit_Assign(cl(Assign(targets=[Context.set(Store, subject)], value=value), target))
             out.extend(stmts)
 
         for target in node.targets:
             if isinstance(target, Attribute):
-                change('del_attr', target.value, Str(s=target.attr), target)
+                change(globals.del_attr, target.value, Str(s=target.attr), target)
             elif isinstance(target, Subscript):
-                change('del_slice', target.value, deslicify(target.slice), target)
+                change(globals.del_slice, target.value, deslicify(target.slice), target)
             else:
                 unchanged.append(target)
 
         clear_unchanged()
         return out
+
+    def literal(self, node, con):
+        return self.names.call_global(con, [self.generic_visit(node)], src=node)
+
+    def visit_Dict(self, node):
+        return self.literal(node, pmap)
+
+    def visit_DictComp(self, node):
+        return self.literal(node, pmap)
+
+    def visit_List(self, node):
+        return self.literal(node, pvector)
+
+    def visit_ListComp(self, node):
+        return self.literal(node, pvector)
+
+    def visit_Set(self, node):
+        return self.literal(node, pset)
+
+    def visit_SetComp(self, node):
+        return self.literal(node, pset)
+
+    def visit_keyword(self, node):
+        '''
+        In a function call like ``foo(**{...})`` we should not transform the dictionary.
+        '''
+        if node.arg is None and isinstance(node.value, (Dict, DictComp)):
+            # When arg is None, it's a `**` construct.
+            node.value = self.generic_visit(node.value)
+            return node
+        else:
+            return self.generic_visit(node)
