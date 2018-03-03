@@ -71,6 +71,10 @@ This is really just trying to take a prototype and do something useful with it.
 If a function isn't calling something in a useful manner, the culprit is probably my very lame implementations in
 `pyrsistent_mutable.globals`.
 
+### Don't forget to `return`
+
+This only munges assignments and expression statements.
+
 ### Known limits
 
 Most of these are because I've done very preliminary work to map imperative operations to pyrsistent values
@@ -80,10 +84,8 @@ Most of these are because I've done very preliminary work to map imperative oper
 * Augmented assignment generally requires a pyrsistent value on the rhs
   * This is mitigated now that the module translates literals.
 * It is not tested on asynchronous functions or generators. It shouldn't care about them, though. 
-
-### Don't forget to `return`
-
-This only munges assignments and expression statements.
+* It's all or nothing.
+* The top level function can't have `nonlocal` names. Embedded functions can, though.
 
 ### Debugging
 
@@ -100,14 +102,16 @@ and reparses entirely.
 The hook is pretty careful to do the least possible to patch the import mechanism. I'm not sure if it's kosher to
 write out the rewritten files the way I do for the debugging mechanism, so debugging is off by default.
 
-You may need to `touch` the files to the import hook to rerun, but do this:
+You may need to `touch` the files for the import hook to rerun, but this is how the tests set it up:
 
-    from pyrsistent_mutable import set_debug
-    print(repr(set_debug(True, True)))
-    import your_module  # You don't need the .pyrmut extension.
+```python
+from pyrsistent_mutable.hook import make_meta_hook
+from pyrsistent_mutable.rewrite import rewrite
 
-If that didn't return `(True, True)`, double check that you've got `astunparse` installed. It's included if you install
-`pyrsistent-mutable[debug]`.
+rewrite_hook = make_meta_hook(rewrite, '.pyrmut')
+rewrite_hook.write_transformed = True
+```
+
 
 ## Package maintainer notes
 

@@ -5,7 +5,7 @@ with open('README.md') as fh:
 
 setup(
     name='pyrsistent-mutable',
-    version='0.0.3',
+    version='0.0.4',
     author='Ben Samuel',
     packages=['pyrsistent_mutable'],
     description='Decorator to create and update immutable values with imperative syntax.',

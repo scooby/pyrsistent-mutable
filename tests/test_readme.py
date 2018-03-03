@@ -1,6 +1,5 @@
 from pyrsistent_mutable import pyrmute
-
-from pyrsistent import PRecord, field, pvector, pmap
+from pyrsistent import PRecord, field
 
 
 class Simple(PRecord):
@@ -10,28 +9,34 @@ class Simple(PRecord):
 
 @pyrmute
 def example_func():
-    my_precord = Simple(attr=Simple(attr=10, other=11), other=22)
-    my_vector = [0, 10, 20, 30, 40, 50]
-    with_vector = Simple(attr=[1, 2, 3], other=33)
-    my_map = {'other': 'value'}
-    value = 'banana'
+    # Built in referential integrity
+    save_vector = my_vector = [0, 1, 2, 3, 4]  # Mapped to a pvector
+    del my_vector[3]  # Does *not* change save_vector
 
+    # Evolve nested attributes
+    my_precord = Simple(attr=Simple(other=11), other=[])
     my_precord.attr.attr = 5
-    del my_vector[3]
-    with_vector.attr.append(20)
-    my_map['apple'] = value
+    my_precord.other.append(20)
 
-    return my_precord, my_vector, with_vector, my_map
+    # Transforms literals and comprehensions
+    my_map = {key: {} for key in ('apple', 'banana')}
+    my_map['apple']['pie'] = 'tasty'
+
+    return my_vector, save_vector, my_precord, my_map
 
 
 def test_validate_readme():
     "Test that the example shown in the readme actually works."
 
+    # Import locally so we can copypasta the README.
+    from pyrsistent import pvector, pmap, PVector
+
     # Test
-    my_precord, my_vector, with_vector, my_map = example_func()
+    my_vector, save_vector, my_precord, my_map = example_func()
 
     # Verification
-    assert my_precord == Simple(attr=Simple(attr=5, other=11), other=22)
-    assert my_vector == pvector([0, 10, 20, 40, 50])
-    assert with_vector == Simple(attr=pvector([1, 2, 3, 20]), other=33)
-    assert my_map == pmap({'other': 'value', 'apple': 'banana'})
+    assert my_vector == pvector([0, 1, 2, 4])
+    assert isinstance(my_vector, PVector)
+    assert save_vector == pvector([0, 1, 2, 3, 4])
+    assert my_precord == Simple(attr=Simple(attr=5, other=11), other=pvector([20]))
+    assert my_map == pmap({'apple': {'pie': 'tasty'}, 'banana': {}})

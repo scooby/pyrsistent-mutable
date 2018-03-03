@@ -1,14 +1,12 @@
 from ast import (
-    AST, Assign, Attribute, BinOp, Call, Delete, Dict, DictComp, Expr, ExtSlice, ImportFrom, Index, Load, Name, NameConstant,
-    NodeTransformer, NodeVisitor, Slice, Store, Str, Subscript, Tuple, alias, copy_location as cl, dump,
+    AST, Assign, Attribute, BinOp, Call, Delete, Dict, DictComp, Expr, ExtSlice, ImportFrom, Index, Load, Name,
+    NameConstant, NodeTransformer, NodeVisitor, Slice, Store, Str, Subscript, Tuple, alias, copy_location as cl, dump,
     fix_missing_locations as fml, iter_fields
 )
 from collections import defaultdict
 from copy import deepcopy
-from pvectorc import pvector
 
-from astunparse import Unparser
-from pyrsistent import plist, pmap, pset
+from pyrsistent import pmap, pset, pvector
 from pyrsistent_mutable import globals
 
 
@@ -16,18 +14,6 @@ def rewrite(module):
     with Names(module) as imports:
         RewriteAssignments(imports).visit(module)
     return fml(module)
-
-
-def scan(node, path=plist()):
-    if isinstance(node, list):
-        for elem in node:
-            yield from scan(elem, path)
-    elif isinstance(node, AST):
-        yield node, path
-        for name, value in iter_fields(node):
-            yield from scan(value, path.cons(node))
-    else:
-        yield node, path
 
 
 def match_ast(pattern, node):
@@ -72,6 +58,13 @@ def match_ast(pattern, node):
 
 
 class NamesInUse(NodeVisitor):
+    """
+    Identifies names in use within an AST to ensure transformations are hygenic.
+
+    The use case for this is to be able to synthesize global names without collisions, so it's
+    very dumb (and hopefully robust as a result) and doesn't know where names are actually in
+    scope.
+    """
     def __init__(self):
         self.names = set()
 
@@ -93,7 +86,8 @@ class NamesInUse(NodeVisitor):
 
 class Names:
     '''
-    Generates unique names for locals and imports.
+    A context manager that generates unique names for locals and imports, and can
+    add the import statements on exit.
     '''
     def __init__(self, module, prefix='_'):
         self.module = module
@@ -107,6 +101,11 @@ class Names:
         return self
 
     def dotted(self, *parts):
+        '''
+        Import a global name and give it a unique name within this module.
+        :param parts: Either the parts of the dotted name, or a callable.
+        :return: a unique name referencing the global name.
+        '''
         if len(parts) == 1 and callable(parts[0]):
             parts = name_of(parts[0])
         if len(parts) < 2:
@@ -118,6 +117,11 @@ class Names:
         return name
 
     def unique(self, part):
+        '''
+        Get a unique local or global name within this context given part of a name.
+        :param part: A name that is suggestive of the actual name, to make reading the transformed source easier.
+        :return: The unique name.
+        '''
         prefix = self.prefix
         name = prefix + str(part)
         counter = 0
@@ -143,6 +147,14 @@ class Names:
         self.module.body[0:0] = stmts
 
     def call_global(self, name, args, keywords=None, src=None):
+        '''
+        Import and call a function we're providing to the rewritten module.
+        :param name: Either a tuple of the name parts or a function to get its name.
+        :param args: A list of positional arguments.
+        :param keywords: A dictionary of keyword arguments.
+        :param src: A source node to copy the location of this call from.
+        :return: The AST node calling the function as requested.
+        '''
         func = Name(id=self.dotted(name), ctx=Load())
         if keywords is None:
             keywords = []
@@ -159,6 +171,12 @@ def name_of(func):
 
 
 class Context(NodeTransformer):
+    '''
+    Copy some AST and transform the context to be Store, Load, etc.
+
+    This is so that we can do surgery with expressions and assignments, translating context
+    from Store to Load or vice versa.
+    '''
     def __init__(self, ctx):
         self._ctx = ctx
 
@@ -191,6 +209,13 @@ _slice = Attribute(value=Name(id='__builtins__', ctx=Load()), attr='slice', ctx=
 
 
 def deslicify(subscript):
+    '''
+    Rewrite a subscript expression as a call to the builtin `slice` function.
+
+    The result should be what your `__getitem__` method would see.
+    :param subscript: The AST node for a subscript expression.
+    :return: A literal equivalent to the subscript expression.
+    '''
     def fix_none(node):
         if node is None:
             return cl(NameConstant(None), subscript)
@@ -216,21 +241,56 @@ def deslicify(subscript):
 
 
 class RewriteAssignments(NodeTransformer):
+    '''
+    The main transformer, this converts assignments and literals. See methods for details.
+    '''
     def __init__(self, names):
         self.names = names
 
     def visit_AugAssign(self, node):
+        '''
+        Rewrite augmented assignment as regular assignment.
+
+        TODO: This degrades all augmented assignment which is not what we want.
+        :param node: An AugAssign node.
+        :return: The same node transformed into a regular assignment.
+        '''
         node = cl(Assign(
             targets=[Context.set(Store, node.target)],
             value=BinOp(
                 left=Context.set(Load, node.target),
                 op=node.op,
-                right=self.generic_visit(node.value)
+                right=self.visit(node.value)
             )
         ), node)
         return self.visit_Assign(node)
 
     def visit_Assign(self, node):
+        '''
+        Rewrite attribute and slice assignment as invocations of functions that can
+        attempt evolution.
+
+        Say we read the left-hand side of an assignment as AST:
+
+            name.attr1.attr2 = new_value
+
+            Attr(Attr(Name('name'), 'attr1'), 'attr2')
+
+        The destructuring enforces these productions:
+
+            destruct(Attr(VALUE, ATTR), RHS) -> destructure(VALUE, set_attr(VALUE, ATTR, RHS))
+            destruct(LHS, RHS) -> LHS, RHS
+
+        So we our example is effectively rewriting via these steps:
+
+            destruct(name.attr1.attr2, new_value)
+                destruct(name.attr1, setattr(name.attr1, 'attr2', new_value))
+                    destruct(name, setattr(name, 'attr1', setattr(name.attr1, 'attr2', new_value)))
+                        Done.
+
+        :param node: An assignment node.
+        :return: A destructured assignment.
+        '''
         def set_attr(lhs, attr, rhs):
             return self.names.call_global(globals.set_via_attr,
                                           [Context.set(Load, lhs), Str(s=attr), rhs],
@@ -259,6 +319,7 @@ class RewriteAssignments(NodeTransformer):
             out.append(assign)
         return out
 
+    #: A pattern to match a method call.
     _method_pattern = Call(
         func=Attribute(
             value={'subject'},
@@ -269,7 +330,11 @@ class RewriteAssignments(NodeTransformer):
     )
 
     def visit_Expr(self, node):
-        # Rewrite foo.append(...) as foo = invoke(foo, 'append', ...)
+        '''Rewrite foo.append(...) as foo = invoke(foo, 'append', ...).
+
+        This depends on the `invoke` method simply knowing which method invocations ought to be saved, thus this is
+        tightly coupled to the pyrsistent API.
+        '''
         match = match_ast(self._method_pattern, self.visit(node.value))
         if match is None:
             return cl(Expr(value=self.visit(node.value)), node)
@@ -280,6 +345,9 @@ class RewriteAssignments(NodeTransformer):
         return self.visit_Assign(cl(assign, node))
 
     def visit_Delete(self, node):
+        '''
+        Rewrites a delete using an evolver.
+        '''
         out = []
         unchanged = []
 
@@ -308,6 +376,7 @@ class RewriteAssignments(NodeTransformer):
         return out
 
     def literal(self, node, con):
+        '''Wrap a literal node with a call to the appropriate global constructor.'''
         return self.names.call_global(con, [self.generic_visit(node)], src=node)
 
     def visit_Dict(self, node):
@@ -330,7 +399,9 @@ class RewriteAssignments(NodeTransformer):
 
     def visit_keyword(self, node):
         '''
-        In a function call like ``foo(**{...})`` we should not transform the dictionary.
+        Prevent transforming a literal dictionary in a splat to a `pmap`.
+
+        Rationale: in a function call like ``foo(**{...})`` we should not transform the dictionary.
         '''
         if node.arg is None and isinstance(node.value, (Dict, DictComp)):
             # When arg is None, it's a `**` construct.

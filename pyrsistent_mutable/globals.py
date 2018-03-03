@@ -4,8 +4,7 @@ pyrsistent types.
 '''
 from pyrsistent import PBag, PClass, PDeque, PList, PMap, PSet, PVector
 
-# Determine if we expect a method call to return itself by looking up the method name and then
-# checking the type of the object.
+#: A map of method names to types such that the methods are known to return an evolution of the object.
 returns_self = {
     'add': (PBag, PSet),
     'append': (PDeque, PVector),
@@ -34,10 +33,11 @@ returns_self = {
 
 
 def set_via_attr(obj, attr, value):
+    """Attempt to set an attribute by evolution, but fall back to ordinary attribute setting."""
     try:
         setter = obj.set
     except AttributeError:
-        pass # Avoid "in this error another error occured" annoyance.
+        pass  # Avoid "in this error another error occured" annoyance.
     else:
         return setter(attr, value)
     obj.attr = value
@@ -45,6 +45,7 @@ def set_via_attr(obj, attr, value):
 
 
 def set_via_slice(obj, index, value):
+    """Attempt to set a slice by evolution, but fall back to ordinary setitem."""
     try:
         evolver = obj.evolver
     except AttributeError:
@@ -58,6 +59,7 @@ def set_via_slice(obj, index, value):
 
 
 def del_attr(obj, attr):
+    """Attempt to delete an attribute by evolution, but fall back to ordinary del attr."""
     try:
         evolver = obj.evolver
     except AttributeError:
@@ -71,6 +73,7 @@ def del_attr(obj, attr):
 
 
 def del_slice(obj, index):
+    """Attempt to delete keys by evolution, but fall back to ordinary delitem."""
     try:
         evolver = obj.evolver
     except AttributeError:

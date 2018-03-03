@@ -10,7 +10,13 @@ from .rewrite import rewrite
 _in_pyrmute = 0
 
 
-def pyrmute(target=None, *, debug=True):
+def pyrmute(target=None, *, write_source=True):
+    '''
+    Rewrite a decorated function using imperative commands to use the pyrsistent API.
+    :param target: A function to rewrite.
+    :param write_source: By default, write the translated source to `__source__`, set this to false to disable.
+    :return: the rewritten function.
+    '''
     def dec(func):
         global _in_pyrmute
         if _in_pyrmute:
@@ -34,7 +40,7 @@ def pyrmute(target=None, *, debug=True):
             _in_pyrmute = False
 
         result = module[func.__name__]
-        if debug:
+        if write_source:
             result.__source__ = show_ast(transformed)
         return result
 

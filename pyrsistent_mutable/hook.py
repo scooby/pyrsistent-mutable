@@ -1,20 +1,20 @@
 import ast
 from contextlib import contextmanager
 from importlib.abc import MetaPathFinder
-from importlib.machinery import FileFinder, PathFinder, SourceFileLoader
-from os.path import isdir
+from importlib.machinery import FileFinder, SourceFileLoader
 import sys
+
 from astunparse import Printer
 
 
 class HookLoader(SourceFileLoader):
-    _debug = False
+    write_transformed = False
 
     def source_to_code(self, data, path, *, _optimize=-1):
         module = ast.parse(data, filename=path)
         module = self.modify_ast(module)
         ast.fix_missing_locations(module)
-        if self._debug:
+        if self.write_transformed:
             debug_path = path.with_name(path.stem + '-dump').with_suffix(path.suffix)
             with open(debug_path, 'w') as fh:
                 Printer(file=fh).visit(module)
@@ -23,15 +23,13 @@ class HookLoader(SourceFileLoader):
     def modify_ast(self, module):
         raise NotImplementedError()
 
-    def set_debug(self):
-        self._debug = True
-
 
 class HookPathFinder(MetaPathFinder):
-    def __init__(self, loader, extensions):
+    def __init__(self, loader, extensions, matcher):
         self.cache = {}
         self.loader_class = loader
         self.extensions = list(extensions)
+        self.matcher = matcher
 
     def finder(self, path):
         try:
@@ -45,7 +43,7 @@ class HookPathFinder(MetaPathFinder):
             path = sys.path
         for one_path in path:
             spec = self.finder(one_path).find_spec(fullname, target)
-            if spec is not None:
+            if spec is not None and self.matcher(spec):
                 return spec
         return None
 
@@ -60,25 +58,9 @@ def subclass_hook_loader(modify_ast_func):
     return HookLoaderSub
 
 
-def make_path_hook(modify_ast_func, *extensions):
+def make_meta_hook(modify_ast_func, *extensions, matcher=lambda _: True):
     hook_loader = subclass_hook_loader(modify_ast_func)
-
-    def path_hook(path):
-        # None is treated as pwd by bootstrap.
-        if path is not None and not isdir(path):
-            raise ImportError('only directories are supported, got ' + str(path))
-        return FileFinder(path, (hook_loader, *extensions))
-    return path_hook
-
-
-def make_meta_hook(modify_ast_func, *extensions):
-    hook_loader = subclass_hook_loader(modify_ast_func)
-    return HookPathFinder(hook_loader, extensions)
-
-
-def add_path_hook(path_hook):
-    sys.path_hooks.insert(0, path_hook)
-    PathFinder.invalidate_caches()
+    return HookPathFinder(hook_loader, extensions, matcher)
 
 
 def add_meta_hook(meta_hook):
