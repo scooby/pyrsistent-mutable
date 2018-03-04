@@ -1,8 +1,8 @@
 from mock import patch
-
-from pyrsistent import pmap, PMap, PVector, pvector, PSet, pset
 import pytest
 from pytest import raises
+
+from pyrsistent import pmap, PMap, PVector, pvector, PSet, pset
 import sys
 
 from pyrsistent_mutable import pyrmute
