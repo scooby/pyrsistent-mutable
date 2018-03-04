@@ -21,7 +21,7 @@ setup(
         'Programming Language :: Python :: 3.6',
     ], python_requires='~=3.4',
     install_requires=[
-        'pyrsistent', 'astunparse'
+        'pyrsistent', 'astunparse', 'six'
     ], license='MIT',
     extras_require={
     }, zip_safe=True,

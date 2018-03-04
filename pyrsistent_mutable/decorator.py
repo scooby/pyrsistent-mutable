@@ -3,6 +3,11 @@ import inspect
 from io import StringIO
 from textwrap import dedent
 from astunparse import Unparser
+try:
+    from inspect import getclosurevars
+except ImportError:
+    def getclosurevars(_):
+        return None
 
 from .flags import get_flags
 from .rewrite import rewrite
@@ -10,7 +15,7 @@ from .rewrite import rewrite
 _in_pyrmute = 0
 
 
-def pyrmute(target=None, *, write_source=True):
+def pyrmute(target=None, write_source=True):
     '''
     Rewrite a decorated function using imperative commands to use the pyrsistent API.
     :param target: A function to rewrite.
@@ -25,7 +30,7 @@ def pyrmute(target=None, *, write_source=True):
             return func
         source = dedent(inspect.getsource(func))
         filename = inspect.getsourcefile(func)
-        _check_closure(inspect.getclosurevars(func))
+        _check_closure(func)
         module = inspect.getmodule(func)
         flags = get_flags(module)
         tree = parse(source, filename)
@@ -47,8 +52,9 @@ def pyrmute(target=None, *, write_source=True):
     return dec if target is None else dec(target)
 
 
-def _check_closure(closure):
-    if closure.nonlocals:
+def _check_closure(func):
+    closure = getclosurevars(func)
+    if closure and closure.nonlocals:
         # To do nonlocals, we'll need to reevaluate a larger function. So what we want is a
         # top-level decorator that does the rewrite and inner decorators that mark the code
         # to be rewritten.

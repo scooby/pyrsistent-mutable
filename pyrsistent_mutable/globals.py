@@ -66,7 +66,7 @@ def del_attr(obj, attr):
         pass
     else:
         evolver = evolver()
-        delattr(evolver, attr)
+        evolver.remove(attr)
         return evolver.persistent()
     delattr(obj, attr)
     return obj

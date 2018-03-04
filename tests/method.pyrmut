@@ -1,8 +1,0 @@
-def simple_invoke(value):
-    value.append(20)
-    return value
-
-
-def complex_invoke(value):
-    value.foo.extend([20, 30, 40])
-    return value

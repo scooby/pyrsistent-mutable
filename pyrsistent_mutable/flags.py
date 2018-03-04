@@ -1,6 +1,8 @@
 import __future__ as future
 import sys
 
+from six import viewkeys
+
 
 def find_optional_features():
     '''
@@ -30,7 +32,7 @@ def get_flags(module):
     '''
     mod = vars(module)
     accum = 0
-    for name in mod.keys() & optional_features:
+    for name in viewkeys(mod) & optional_features:
         feat = mod[name]
         # noinspection PyProtectedMember
         if feat.__class__ == future._Feature:

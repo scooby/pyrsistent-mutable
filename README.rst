@@ -37,12 +37,12 @@ This means that a set of specific operations are transformed:
         my_precord.other.append(20)
 
         # Transforms literals and comprehensions
-        my_map = {key: {} for key in ('apple', 'banana')}
-        my_map['apple']['pie'] = 'tasty'
+        my_maps = [{'filling': key} for key in ('apple', 'banana')]
+        my_maps[0]['crust'] = 'flaky'
 
-        return my_vector, save_vector, my_precord, my_map
+        return my_vector, save_vector, my_precord, my_maps
 
-*This example is tested in ``tests/test_readme.py``\.*
+*This example is tested in* ``tests/test_readme.py``\.
 
 What's the point?
 -----------------
@@ -96,7 +96,7 @@ This only munges assignments and expression statements.
 Read the ``__source__``
 -----------------------
 
-The transformed code is written into your function under ``__source__``\, and may be helpful in debugging.
+The transformed code is written into your function under ``__source__`` which may be helpful in debugging.
 
 Known limits
 ------------
@@ -116,38 +116,6 @@ Debugging
 
 By default, the decorator will write the transformed source to your function as ``__source__``\. I just pulled that name
 out my hat. You can call the decorator with ``write_source=False`` to disable this.
-
-Using an import hook
-====================
-
-I originally wrote this as an import hook. This works, and most of the tests are still using it, but it requires
-a separate file extension, and to let it see ``.py`` files means either inspecting *all* files for decorators or
-registering certain modules. Either way, patching the import mechanism is not great, so this uses ``inspect.getsource``
-and reparses entirely.
-
-The hook is pretty careful to do the least possible to patch the import mechanism. I'm not sure if it's kosher to
-write out the rewritten files the way I do for the debugging mechanism, so debugging is off by default.
-
-You may need to ``touch`` the files for the import hook to rerun, but this is how the tests set it up:
-
-.. code-block:: python
-
-    from pyrsistent_mutable.hook import make_meta_hook
-    from pyrsistent_mutable.rewrite import rewrite
-
-    rewrite_hook = make_meta_hook(rewrite, '.pyrmut')
-    rewrite_hook.write_transformed = True
-
-Notes on using it
------------------
-
-Generally, you create a module in the same directory structure as your ``.py`` modules, but it's named ``.pyrmut``
-instead.
-
-* Modules to be transformed must be named ``*.pyrmut`` instead of ``.py``
-* You must install the hook with ``import pyrsistent_mutable`` before you import your module.
-* This probably won't work in zip files, so mark your package as not zip safe.
-* It does take a ``matcher`` argument if you want to use ``.py`` and select files.
 
 Package maintainer notes
 ========================

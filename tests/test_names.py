@@ -1,6 +1,8 @@
 from pyrsistent_mutable.rewrite import Names, match_ast
 from ast import parse, ImportFrom, alias, dump
 
+import sys
+
 
 def check_mod():
     return parse('''
@@ -11,18 +13,18 @@ from some.mod import imported_name
 from some.mod import thing as aliased_name
 
 global_name = 1
-async def async_func():
+{}def async_func():
     local_name = 2
 def func_name(param_name):
     del some_name
 class class_name:
     pass
-''')
+'''.format('async ' if sys.version_info > (3, 4) else ''))
 
 
 def test_sees_names():
-    expected = {'aliased_module', 'aliased_name', 'async_func', 'class_name',
-                'func_name', 'global_name', 'imported_name', 'mod_name', 'relative_name'}
+    expected = set(['aliased_module', 'aliased_name', 'async_func', 'class_name', 'func_name', 'global_name',
+                    'imported_name', 'mod_name', 'relative_name'])
     with Names(check_mod()) as subj:
         assert subj.names == expected
 
@@ -36,10 +38,11 @@ def test_skips_existent():
         assert subj.dotted('test', 'mod2', 'func_name') == 'func_name1'
 
     expect = ImportFrom(
-        module={'mod'},
+        module=set(['mod']),
         names=[alias(
-            name={'name'},
-            asname={'asname'})])
+            name=set(['name']),
+            asname=set(['asname'])
+        )])
     print(dump(module))
     assert match_ast(expect, module.body[0]) == {'asname': 'func_name0', 'mod': 'test.mod', 'name': 'func_name'}
     assert match_ast(expect, module.body[1]) == {'asname': 'func_name1', 'mod': 'test.mod2', 'name': 'func_name'}

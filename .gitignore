@@ -1,8 +1,9 @@
-/.cache
+.cache
 /.idea
-/venv
+/venv*
 /*.egg-info
 __pycache__
 *.pyc
 /build
 /dist
+.pytest_cache/

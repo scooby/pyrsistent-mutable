@@ -1,3 +1,4 @@
 pyrsistent  # base requirement
 astunparse  # debugging requirement
 pytest      # testing
+mock        # for python 2.x

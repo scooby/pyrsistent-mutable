@@ -1,10 +1,12 @@
 from ast import (
-    AST, Assign, Attribute, BinOp, Call, Delete, Dict, DictComp, Expr, ExtSlice, ImportFrom, Index, Load, Name,
-    NameConstant, NodeTransformer, NodeVisitor, Slice, Store, Str, Subscript, Tuple, alias, copy_location as cl, dump,
+    AST, Assign, Attribute, BinOp, Delete, Dict, DictComp, Expr, ExtSlice, ImportFrom, Index, Load, Name,
+    NodeTransformer, NodeVisitor, Slice, Store, Str, Subscript, Tuple, alias, copy_location as cl, dump,
     fix_missing_locations as fml, iter_fields
 )
 from collections import defaultdict
 from copy import deepcopy
+
+from .ast6 import name_constant, call6
 
 from pyrsistent import pmap, pset, pvector
 from pyrsistent_mutable import globals
@@ -106,7 +108,7 @@ class Names:
         :param parts: Either the parts of the dotted name, or a callable.
         :return: a unique name referencing the global name.
         '''
-        if len(parts) == 1 and callable(parts[0]):
+        if len(parts) == 1 and hasattr(parts[0], '__name__'):
             parts = name_of(parts[0])
         if len(parts) < 2:
             raise TypeError('Expect at least two parts to a fully qualified name.')
@@ -158,7 +160,7 @@ class Names:
         func = Name(id=self.dotted(name), ctx=Load())
         if keywords is None:
             keywords = []
-        call = Call(func=func, args=args, keywords=keywords)
+        call = call6(func=func, args=args, keywords=keywords)
         if src is not None:
             cl(call, src)
         return call
@@ -218,14 +220,13 @@ def deslicify(subscript):
     '''
     def fix_none(node):
         if node is None:
-            return cl(NameConstant(None), subscript)
+            return cl(name_constant(None), subscript)
         else:
             return node
 
     def fix_slice(node):
         if isinstance(node, Slice):
-            return cl(Call(func=_slice, args=[fix_none(node.lower), fix_none(node.upper), fix_none(node.step)],
-                           keywords=[]), node)
+            return cl(call6(func=_slice, args=[fix_none(node.lower), fix_none(node.upper), fix_none(node.step)]), node)
         else:
             return fix_none(node)
 
@@ -237,7 +238,7 @@ def deslicify(subscript):
     elif isinstance(subscript, Slice):
         return cl(fix_slice(subscript), subscript)
     else:
-        raise TypeError(f'Expected {dump(subscript)} to be a subscript expression.')
+        raise TypeError('Expected {} to be a subscript expression.'.format(dump(subscript)))
 
 
 class RewriteAssignments(NodeTransformer):
@@ -320,13 +321,13 @@ class RewriteAssignments(NodeTransformer):
         return out
 
     #: A pattern to match a method call.
-    _method_pattern = Call(
+    _method_pattern = call6(
         func=Attribute(
-            value={'subject'},
-            attr={'method'},
+            value=set(['subject']),
+            attr=set(['method']),
             ctx=Load()
-        ), args={'arguments'},
-        keywords={'keywords'}
+        ), args=set(['arguments']),
+        keywords=set(['keywords'])
     )
 
     def visit_Expr(self, node):
@@ -352,13 +353,11 @@ class RewriteAssignments(NodeTransformer):
         unchanged = []
 
         def clear_unchanged():
-            nonlocal out, unchanged
             if unchanged:
                 out.append(cl(Delete(targets=list(unchanged)), node))
                 del unchanged[:]
 
         def change(func, subject, tail, target):
-            nonlocal out
             clear_unchanged()
             value = self.names.call_global(func, [Context.set(Load, subject), tail], src=target)
             stmts = self.visit_Assign(cl(Assign(targets=[Context.set(Store, subject)], value=value), target))
