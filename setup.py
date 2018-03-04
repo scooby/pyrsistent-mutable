@@ -1,11 +1,11 @@
 from setuptools import setup
 
-with open('README.md') as fh:
+with open('README.rst') as fh:
     long_descr = fh.read()
 
 setup(
     name='pyrsistent-mutable',
-    version='0.0.4',
+    version='0.0.5',
     author='Ben Samuel',
     packages=['pyrsistent_mutable'],
     description='Decorator to create and update immutable values with imperative syntax.',
