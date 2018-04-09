@@ -1,12 +1,11 @@
 from ast import (
-    AST, Assign, Attribute, BinOp, Delete, Dict, DictComp, Expr, ExtSlice, ImportFrom, Index, Load, Name,
-    NodeTransformer, NodeVisitor, Slice, Store, Str, Subscript, Tuple, alias, copy_location as cl, dump,
-    fix_missing_locations as fml, iter_fields
+    Assign, Attribute, BinOp, Delete, Dict, DictComp, Expr, ImportFrom, Load, Name,
+    NodeTransformer, NodeVisitor, Store, Str, Subscript, alias, copy_location as cl, fix_missing_locations as fml
 )
 from collections import defaultdict
-from copy import deepcopy
 
-from .ast6 import name_constant, call6
+from pyrsistent_mutable.ast6 import match_ast, Context, deslicify, Cap
+from .ast6 import call6
 
 from pyrsistent import pmap, pset, pvector
 from pyrsistent_mutable import globals
@@ -16,47 +15,6 @@ def rewrite(module):
     with Names(module) as imports:
         RewriteAssignments(imports).visit(module)
     return fml(module)
-
-
-def match_ast(pattern, node):
-    '''
-    Matches a node against a pattern and returns the values of placeholders.
-    :param pattern: An AST node with child nodes or strings as placeholders.
-    :param node: The node to match against.
-    :return: A dictionary of placeholders with values seen, or None to indicate a failure.
-    '''
-
-    if isinstance(pattern, set) and len(pattern) == 1:
-        return {next(iter(pattern)): node}
-
-    if not isinstance(node, type(pattern)):
-        return None
-
-    if isinstance(pattern, list):
-        if len(pattern) != len(node):
-            return None
-        result = {}
-        for pelem, nelem in zip(pattern, node):
-            found = match_ast(pelem, nelem)
-            if found is None:
-                return None
-            result.update(found)
-        return result
-
-    if isinstance(pattern, AST):
-        result = {}
-        for field, expect in iter_fields(pattern):
-            found = getattr(node, field, None)
-            found = match_ast(expect, found)
-            if found is None:
-                return None
-            result.update(found)
-        return result
-
-    if pattern == node:
-        return {}
-    else:
-        return None
 
 
 class NamesInUse(NodeVisitor):
@@ -172,73 +130,7 @@ def name_of(func):
     return tuple(parts)
 
 
-class Context(NodeTransformer):
-    '''
-    Copy some AST and transform the context to be Store, Load, etc.
-
-    This is so that we can do surgery with expressions and assignments, translating context
-    from Store to Load or vice versa.
-    '''
-    def __init__(self, ctx):
-        self._ctx = ctx
-
-    @classmethod
-    def set(cls, ctx, node):
-        node = deepcopy(node)
-        cls(ctx).visit(node)
-        return node
-
-    def visit_AugLoad(self, _):
-        return self._ctx()
-
-    def visit_AugStore(self, _):
-        return self._ctx()
-
-    def visit_Del(self, _):
-        return self._ctx()
-
-    def visit_Store(self, _):
-        return self._ctx()
-
-    def visit_Load(self, _):
-        return self._ctx()
-
-    def visit_Param(self, _):
-        return self._ctx()
-
-
 _slice = Attribute(value=Name(id='__builtins__', ctx=Load()), attr='slice', ctx=Load())
-
-
-def deslicify(subscript):
-    '''
-    Rewrite a subscript expression as a call to the builtin `slice` function.
-
-    The result should be what your `__getitem__` method would see.
-    :param subscript: The AST node for a subscript expression.
-    :return: A literal equivalent to the subscript expression.
-    '''
-    def fix_none(node):
-        if node is None:
-            return cl(name_constant(None), subscript)
-        else:
-            return node
-
-    def fix_slice(node):
-        if isinstance(node, Slice):
-            return cl(call6(func=_slice, args=[fix_none(node.lower), fix_none(node.upper), fix_none(node.step)]), node)
-        else:
-            return fix_none(node)
-
-    if isinstance(subscript, Index):
-        return subscript.value
-    elif isinstance(subscript, ExtSlice):
-        elems = map(fix_slice, subscript.dims)
-        return cl(Tuple(elts=list(elems), ctx=Load()), subscript)
-    elif isinstance(subscript, Slice):
-        return cl(fix_slice(subscript), subscript)
-    else:
-        raise TypeError('Expected {} to be a subscript expression.'.format(dump(subscript)))
 
 
 class RewriteAssignments(NodeTransformer):
@@ -323,11 +215,11 @@ class RewriteAssignments(NodeTransformer):
     #: A pattern to match a method call.
     _method_pattern = call6(
         func=Attribute(
-            value=set(['subject']),
-            attr=set(['method']),
+            value=Cap('subject'),
+            attr=Cap('method'),
             ctx=Load()
-        ), args=set(['arguments']),
-        keywords=set(['keywords'])
+        ), args=Cap('arguments'),
+        keywords=Cap('keywords')
     )
 
     def visit_Expr(self, node):

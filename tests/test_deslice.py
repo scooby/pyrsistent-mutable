@@ -1,7 +1,5 @@
 from ast import Attribute, Call, Expr, Load, Module, Name, Num, Subscript, Tuple, parse
-from pyrsistent_mutable.ast6 import name_constant
-from pyrsistent_mutable.rewrite import deslicify, match_ast
-
+from pyrsistent_mutable.ast6 import name_constant, match_ast, deslicify
 
 pattern = Module(body=[Expr(value=Subscript(value=Name(id=set(['name'])), slice=set(['slice'])))])
 

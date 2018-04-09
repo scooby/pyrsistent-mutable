@@ -1,4 +1,5 @@
-from pyrsistent_mutable.rewrite import Names, match_ast
+from pyrsistent_mutable.rewrite import Names
+from pyrsistent_mutable.ast6 import match_ast
 from ast import parse, ImportFrom, alias, dump
 
 import sys
